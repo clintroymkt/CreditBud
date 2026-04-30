@@ -1,6 +1,66 @@
-import { Building2, Smartphone, FileText, CheckCircle2, AlertCircle, ArrowRight, Lock } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Building2, Smartphone, FileText, CheckCircle2, AlertCircle, ArrowRight, Lock, Loader2 } from 'lucide-react';
+import { MOCK_TRANSACTIONS } from '../data/mockData';
 
 export function DataSources() {
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const reader = new FileReader();
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const response = await fetch('/api/parse-statement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base64Data,
+          mimeType: file.type
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to parse statement');
+      
+      const data = await response.json();
+      console.log('Extracted transactions:', data.transactions);
+      
+      // Add transactions to mock data to make it visible
+      if (data.transactions && data.transactions.length > 0) {
+         const newTxs = data.transactions.map((tx: any, i: number) => ({
+           id: `parsed_${Date.now()}_${i}`,
+           date: tx.date || new Date().toISOString().split('T')[0],
+           amount: Number(tx.amount) || 0,
+           type: tx.type === 'debit' ? 'debit' : 'credit',
+           category: tx.category || 'Other',
+           source: tx.source || 'bank',
+           description: tx.description || 'Parsed Transaction'
+         }));
+         MOCK_TRANSACTIONS.unshift(...newTxs);
+      }
+      
+      alert(`Statement parsed! Found ${data.transactions.length} transactions. Estimated score impact: ${data.scoreAdjustment > 0 ? '+' : ''}${data.scoreAdjustment} points.`);
+    } catch (error) {
+      console.error(error);
+      alert('Error parsing statement. Ensure it is a valid PDF or image.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6 pb-8">
       <div>
@@ -67,18 +127,28 @@ export function DataSources() {
         </div>
 
         {/* PDF Statement Upload */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 flex flex-col items-start gap-4 hover:bg-slate-50 transition-colors cursor-pointer group">
+        <div 
+          className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 flex flex-col items-start gap-4 hover:bg-slate-50 transition-colors cursor-pointer group relative"
+          onClick={() => !isUploading && fileInputRef.current?.click()}
+        >
            <div className="w-12 h-12 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-             <FileText className="w-6 h-6" />
+             {isUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <FileText className="w-6 h-6" />}
            </div>
            <div>
-             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Upload Statements</h3>
-             <p className="text-[10px] uppercase font-bold text-slate-400 mt-2">Upload PDF statements securely.</p>
+             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">{isUploading ? 'Parsing Statement...' : 'Upload Statements'}</h3>
+             <p className="text-[10px] uppercase font-bold text-slate-400 mt-2">{isUploading ? 'Extracting transactions via Gemini AI' : 'Upload PDF statements securely.'}</p>
            </div>
            <div className="mt-auto w-full">
-              <div className="w-full py-4 rounded-lg border border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 bg-white group-hover:border-primary-400 group-hover:bg-primary-50 transition-colors">
-                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Drag & Drop PDF</span>
-                 <span className="text-[10px] font-medium text-slate-400 uppercase">or click to browse</span>
+              <div className="w-full py-4 rounded-lg border border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 bg-white group-hover:border-primary-400 group-hover:bg-primary-50 transition-colors relative">
+                 <input 
+                   type="file" 
+                   ref={fileInputRef}
+                   onChange={handleFileUpload}
+                   accept="application/pdf,image/*,.csv,text/csv"
+                   className="hidden"
+                 />
+                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">{isUploading ? 'Processing...' : 'Drag & Drop PDF'}</span>
+                 <span className="text-[10px] font-medium text-slate-400 uppercase">{isUploading ? 'Please wait' : 'or click to browse'}</span>
               </div>
            </div>
         </div>

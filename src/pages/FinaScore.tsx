@@ -4,7 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { FINASCORE_HISTORY } from '../data/mockData';
 import { ReportTemplate } from '../components/ReportTemplate';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 export function FinaScoreView() {
   const currentScore = 712;
@@ -24,23 +24,23 @@ export function FinaScoreView() {
       element.style.top = '0';
       element.style.zIndex = '-9999';
 
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false
+      const dataUrl = await toPng(element, {
+        pixelRatio: 2,
+        skipFonts: false,
+        cacheBust: true,
       });
 
       element.style.left = '-9999px';
       element.style.top = '-9999px';
 
-      const imgData = canvas.toDataURL('image/png');
+      // The standard A4 size used in the template is 794 x 1123
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'px',
-        format: [canvas.width, canvas.height]
+        format: [794, 1123]
       });
 
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 794, 1123);
       pdf.save('CreditBud_FinaScore_Report.pdf');
     } catch (error) {
       console.error('Error generating PDF:', error);
